@@ -64,18 +64,86 @@ export default function EmployeePage() {
 
   const canAnalyze = employeeName.trim() && employeeEmail.trim() && message.trim();
 
+function extractDatesFromText(text) {
+  if (!text) return { startDate: "", endDate: "" };
+  text = text.toLowerCase();
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function formatYMD(y, m, d) { return `${y}-${pad(m)}-${pad(d)}`; }
+
+  const monthMap = {
+    january: "01", jan: "01", february: "02", feb: "02", march: "03", mar: "03",
+    april: "04", apr: "04", may: "05", june: "06", jun: "06", july: "07", jul: "07",
+    august: "08", aug: "08", september: "09", sep: "09", sept: "09", october: "10", oct: "10",
+    november: "11", nov: "11", december: "12", dec: "12",
+  };
+  const monthPattern = Object.keys(monthMap).join("|");
+  const currentYear = new Date().getFullYear();
+
+  const isoRange = text.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})\s*(?:to|until|till|se|-)\s*(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/i);
+  if (isoRange) {
+    return { startDate: formatYMD(isoRange[1], isoRange[2], isoRange[3]), endDate: formatYMD(isoRange[4], isoRange[5], isoRange[6]) };
+  }
+
+  const dmyRange = text.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})\s*(?:to|until|till|se|-)\s*(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/i);
+  if (dmyRange) {
+    return { startDate: formatYMD(dmyRange[3], dmyRange[2], dmyRange[1]), endDate: formatYMD(dmyRange[6], dmyRange[5], dmyRange[4]) };
+  }
+
+  const dayToDayMonth = new RegExp(`(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:to|until|till|se|-)\\s*(\\d{1,2})(?:st|nd|rd|th)?\\s*(${monthPattern})(?:\\s*(\\d{4}))?`, "i");
+  const d2dMatch = text.match(dayToDayMonth);
+  if (d2dMatch) {
+    const m = monthMap[d2dMatch[3].toLowerCase()];
+    const y = d2dMatch[4] || currentYear;
+    return { startDate: formatYMD(y, m, d2dMatch[1]), endDate: formatYMD(y, m, d2dMatch[2]) };
+  }
+
+  const singleIso = text.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if (singleIso) {
+    const s = formatYMD(singleIso[1], singleIso[2], singleIso[3]);
+    return { startDate: s, endDate: s };
+  }
+
+  const singleDmy = text.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+  if (singleDmy) {
+    const s = formatYMD(singleDmy[3], singleDmy[2], singleDmy[1]);
+    return { startDate: s, endDate: s };
+  }
+
+  const singleNamed = new RegExp(`(\\d{1,2})(?:st|nd|rd|th)?\\s*(${monthPattern})(?:\\s*(\\d{4}))?`, "i");
+  const snMatch = text.match(singleNamed);
+  if (snMatch) {
+    const m = monthMap[snMatch[2].toLowerCase()];
+    const y = snMatch[3] || currentYear;
+    const s = formatYMD(y, m, snMatch[1]);
+    return { startDate: s, endDate: s };
+  }
+
+  const today = new Date();
+  if (text.includes("tomorrow") || text.includes("kal") || text.includes("next day")) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    const s = formatYMD(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    return { startDate: s, endDate: s };
+  }
+
+  return { startDate: "", endDate: "" };
+}
+
   async function handleAnalyze() {
     setError("");
     setAnalyzing(true);
     setAnalyzed(false);
     try {
       const { extracted, usedFallback } = await analyzeRequest(message);
+      const fallbackDates = extractDatesFromText(message);
+      const resolvedStartDate = extracted.startDate || fallbackDates.startDate || "";
+      const resolvedEndDate = extracted.endDate || fallbackDates.endDate || resolvedStartDate || "";
       setForm({
         requestType: extracted.requestType,
         department: extracted.department,
         priority: extracted.priority,
-        startDate: extracted.startDate || "",
-        endDate: extracted.endDate || "",
+        startDate: resolvedStartDate,
+        endDate: resolvedEndDate,
         reason: extracted.reason,
         summary: extracted.summary,
       });
@@ -87,6 +155,7 @@ export default function EmployeePage() {
       setAnalyzing(false);
     }
   }
+
 
   async function handleSubmit() {
     setError("");
