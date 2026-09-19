@@ -13,11 +13,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const ANTHROPIC_MODEL =
   process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929";
 
-app.use(
-  cors({
-    origin: CORS_ORIGIN.split(",").map((s) => s.trim()),
-  })
-);
+app.use(cors());
 
 app.use(express.json());
 
