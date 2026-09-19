@@ -369,84 +369,155 @@ function fallbackExtract(message) {
     priority = "Low";
   }
 
-  // Date extraction: DD/MM/YYYY or DD-MM-YYYY
-  const fullDateMatch = text.match(
-    /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/
-  );
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function formatYMD(y, m, d) { return `${y}-${pad(m)}-${pad(d)}`; }
 
-  if (fullDateMatch) {
-    const day = fullDateMatch[1].padStart(2, "0");
-    const month = fullDateMatch[2].padStart(2, "0");
-    const year = fullDateMatch[3];
-
-    startDate = `${year}-${month}-${day}`;
-  }
-
-  // Date extraction: "25 september", "25 sep", etc.
   const monthMap = {
-    january: "01",
-    jan: "01",
-    february: "02",
-    feb: "02",
-    march: "03",
-    mar: "03",
-    april: "04",
-    apr: "04",
+    january: "01", jan: "01",
+    february: "02", feb: "02",
+    march: "03", mar: "03",
+    april: "04", apr: "04",
     may: "05",
-    june: "06",
-    jun: "06",
-    july: "07",
-    jul: "07",
-    august: "08",
-    aug: "08",
-    september: "09",
-    sep: "09",
-    sept: "09",
-    october: "10",
-    oct: "10",
-    november: "11",
-    nov: "11",
-    december: "12",
-    dec: "12",
+    june: "06", jun: "06",
+    july: "07", jul: "07",
+    august: "08", aug: "08",
+    september: "09", sep: "09", sept: "09",
+    october: "10", oct: "10",
+    november: "11", nov: "11",
+    december: "12", dec: "12",
   };
-
   const monthPattern = Object.keys(monthMap).join("|");
+  const currentYear = new Date().getFullYear();
 
-  const monthDateRegex = new RegExp(
-    `(\\d{1,2})\\s*(${monthPattern})(?:\\s*(\\d{4}))?`,
-    "i"
-  );
-
-  const monthDateMatch = text.match(monthDateRegex);
-
-  if (!startDate && monthDateMatch) {
-    const day = monthDateMatch[1].padStart(2, "0");
-    const month = monthMap[monthDateMatch[2].toLowerCase()];
-    const year = monthDateMatch[3] || new Date().getFullYear();
-
-    startDate = `${year}-${month}-${day}`;
+  // 1. ISO range: 2026-09-22 to 2026-09-24 or 2026-09-22 - 2026-09-24
+  const isoRange = text.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})\s*(?:to|until|till|se|-)\s*(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/i);
+  if (isoRange) {
+    startDate = formatYMD(isoRange[1], isoRange[2], isoRange[3]);
+    endDate = formatYMD(isoRange[4], isoRange[5], isoRange[6]);
   }
 
-  // Date range: "from 25 september to 27 september"
-  const rangeRegex = new RegExp(
-    `(\\d{1,2})\\s*(${monthPattern})(?:\\s*(\\d{4}))?\\s*(?:to|until|till|-)\\s*(\\d{1,2})\\s*(${monthPattern})(?:\\s*(\\d{4}))?`,
-    "i"
-  );
-
-  const rangeMatch = text.match(rangeRegex);
-
-  if (rangeMatch) {
-    const startDay = rangeMatch[1].padStart(2, "0");
-    const startMonth = monthMap[rangeMatch[2].toLowerCase()];
-    const startYear = rangeMatch[3] || new Date().getFullYear();
-
-    const endDay = rangeMatch[4].padStart(2, "0");
-    const endMonth = monthMap[rangeMatch[5].toLowerCase()];
-    const endYear = rangeMatch[6] || startYear;
-
-    startDate = `${startYear}-${startMonth}-${startDay}`;
-    endDate = `${endYear}-${endMonth}-${endDay}`;
+  // 2. DMY range: 22/09/2026 to 24/09/2026 or 22-09-2026 to 24-09-2026
+  if (!startDate) {
+    const dmyRange = text.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})\s*(?:to|until|till|se|-)\s*(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/i);
+    if (dmyRange) {
+      startDate = formatYMD(dmyRange[3], dmyRange[2], dmyRange[1]);
+      endDate = formatYMD(dmyRange[6], dmyRange[5], dmyRange[4]);
+    }
   }
+
+  // 3. Named month day-to-day range: 22 to 24 september 2026 or 22-24 september
+  if (!startDate) {
+    const dayToDayMonth = new RegExp(`(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:to|until|till|se|-)\\s*(\\d{1,2})(?:st|nd|rd|th)?\\s*(${monthPattern})(?:\\s*(\\d{4}))?`, "i");
+    const d2dMatch = text.match(dayToDayMonth);
+    if (d2dMatch) {
+      const m = monthMap[d2dMatch[3].toLowerCase()];
+      const y = d2dMatch[4] || currentYear;
+      startDate = formatYMD(y, m, d2dMatch[1]);
+      endDate = formatYMD(y, m, d2dMatch[2]);
+    }
+  }
+
+  // 4. Full named month range: 22 september to 24 september 2026
+  if (!startDate) {
+    const fullMonthRange = new RegExp(`(\\d{1,2})(?:st|nd|rd|th)?\\s*(${monthPattern})(?:\\s*(\\d{4}))?\\s*(?:to|until|till|se|-)\\s*(\\d{1,2})(?:st|nd|rd|th)?\\s*(${monthPattern})(?:\\s*(\\d{4}))?`, "i");
+    const fmrMatch = text.match(fullMonthRange);
+    if (fmrMatch) {
+      const sy = fmrMatch[3] || fmrMatch[6] || currentYear;
+      const sm = monthMap[fmrMatch[2].toLowerCase()];
+      const ey = fmrMatch[6] || sy;
+      const em = monthMap[fmrMatch[5].toLowerCase()];
+      startDate = formatYMD(sy, sm, fmrMatch[1]);
+      endDate = formatYMD(ey, em, fmrMatch[4]);
+    }
+  }
+
+  // 5. Month-first range: september 22 to 24 or september 22 to september 24
+  if (!startDate) {
+    const monthFirstRange = new RegExp(`(${monthPattern})\\s*(\\d{1,2})(?:st|nd|rd|th)?(?:\\s*,?\\s*(\\d{4}))?\\s*(?:to|until|till|se|-)\\s*(?:(${monthPattern})\\s*)?(\\d{1,2})(?:st|nd|rd|th)?(?:\\s*,?\\s*(\\d{4}))?`, "i");
+    const mfrMatch = text.match(monthFirstRange);
+    if (mfrMatch) {
+      const sm = monthMap[mfrMatch[1].toLowerCase()];
+      const em = mfrMatch[4] ? monthMap[mfrMatch[4].toLowerCase()] : sm;
+      const y = mfrMatch[6] || mfrMatch[3] || currentYear;
+      startDate = formatYMD(y, sm, mfrMatch[2]);
+      endDate = formatYMD(y, em, mfrMatch[5]);
+    }
+  }
+
+  // 6. Single ISO: 2026-09-22
+  if (!startDate) {
+    const singleIso = text.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+    if (singleIso) {
+      startDate = formatYMD(singleIso[1], singleIso[2], singleIso[3]);
+      endDate = startDate;
+    }
+  }
+
+  // 7. Single DMY: 22/09/2026 or 22-09-2026
+  if (!startDate) {
+    const singleDmy = text.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+    if (singleDmy) {
+      startDate = formatYMD(singleDmy[3], singleDmy[2], singleDmy[1]);
+      endDate = startDate;
+    }
+  }
+
+  // 8. Single named: 25 september or september 25
+  if (!startDate) {
+    const singleNamed1 = new RegExp(`(\\d{1,2})(?:st|nd|rd|th)?\\s*(${monthPattern})(?:\\s*(\\d{4}))?`, "i");
+    const sn1Match = text.match(singleNamed1);
+    if (sn1Match) {
+      const m = monthMap[sn1Match[2].toLowerCase()];
+      const y = sn1Match[3] || currentYear;
+      startDate = formatYMD(y, m, sn1Match[1]);
+      endDate = startDate;
+    }
+  }
+
+  if (!startDate) {
+    const singleNamed2 = new RegExp(`(${monthPattern})\\s*(\\d{1,2})(?:st|nd|rd|th)?(?:\\s*,?\\s*(\\d{4}))?`, "i");
+    const sn2Match = text.match(singleNamed2);
+    if (sn2Match) {
+      const m = monthMap[sn2Match[1].toLowerCase()];
+      const y = sn2Match[3] || currentYear;
+      startDate = formatYMD(y, m, sn2Match[2]);
+      endDate = startDate;
+    }
+  }
+
+  // 9. Relative days: tomorrow, kal, today
+  if (!startDate) {
+    const today = new Date();
+    if (text.includes("tomorrow") || text.includes("kal") || text.includes("next day")) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + 1);
+      startDate = formatYMD(d.getFullYear(), d.getMonth() + 1, d.getDate());
+      endDate = startDate;
+    } else if (text.includes("today") || text.includes("aaj")) {
+      startDate = formatYMD(today.getFullYear(), today.getMonth() + 1, today.getDate());
+      endDate = startDate;
+    }
+  }
+
+  // 10. Days of week: 'this friday', 'next monday', etc.
+  if (!startDate) {
+    const today = new Date();
+    const daysOfWeek = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    for (const [dayName, targetDay] of Object.entries(daysOfWeek)) {
+      if (text.includes(dayName)) {
+        const d = new Date(today);
+        const currentDay = d.getDay();
+        let diff = targetDay - currentDay;
+        if (diff <= 0) diff += 7;
+        if (text.includes("next " + dayName)) diff += 7;
+        d.setDate(d.getDate() + diff);
+        startDate = formatYMD(d.getFullYear(), d.getMonth() + 1, d.getDate());
+        endDate = startDate;
+        break;
+      }
+    }
+  }
+
 
   // Common reasons
   if (
